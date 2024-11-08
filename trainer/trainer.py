@@ -6,6 +6,8 @@ from torchtext.data import BucketIterator
 from evaluator.evaluator import Evaluator
 from utils.checkpoint import Chechpoint
 from utils.constants import RNN_NAME
+from torch.cuda.amp import autocast, GradScaler
+from tqdm.notebook import tqdm_notebook
 
 class Trainer(object):
     """Trainer Class"""
@@ -19,7 +21,8 @@ class Trainer(object):
     def _train_batch(self, model, iterator, teacher_ratio, clip):
         model.train()
         epoch_loss = 0
-        for _, batch in enumerate(iterator):
+        #scaler = GradScaler()
+        for _, batch in enumerate(tqdm_notebook(iterator)):
             src, src_len = batch.src
             trg = batch.trg
             self.optimizer.zero_grad()
@@ -30,11 +33,13 @@ class Trainer(object):
             trg = trg.contiguous().view(-1)
             # output: (batch_size * trg_len) x output_dim
             # trg: (batch_size * trg_len)
+            torch.cuda.empty_cache()
             loss = self.criterion(output, trg)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
             self.optimizer.step()
             epoch_loss += loss.item()
+                
         return epoch_loss / len(iterator)
 
     def _get_iterators(self, train_data, valid_data, model_name):
@@ -57,20 +62,27 @@ class Trainer(object):
         print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {np.exp(train_loss):7.3f}')
         print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {np.exp(valid_loss):7.3f}')
 
-    def _train_epoches(self, model, train_data, valid_data, num_of_epochs, teacher_ratio, clip):
+    def _train_epoches(self, model, train_data, valid_data,  path_, num_of_epochs, teacher_ratio, clip):
         best_valid_loss = float('inf')
         # pylint: disable=unbalanced-tuple-unpacking
         train_iterator, valid_iterator = self._get_iterators(train_data, valid_data, model.name)
+        train_loss_list = []
+        val_loss_list = []
         for epoch in range(num_of_epochs):
             start_time = time.time()
             train_loss = self._train_batch(model, train_iterator, teacher_ratio, clip)
             valid_loss = self.evaluator.evaluate(model, valid_iterator, teacher_ratio)
+            
+            train_loss_list.append(train_loss)
+            val_loss_list.append(valid_loss)
+            
             end_time = time.time()
             self._log_epoch(train_loss, valid_loss, epoch, start_time, end_time)
             if valid_loss < best_valid_loss:
                 best_valid_loss = valid_loss
-                Chechpoint.save(model)
+                Checkpoint.save(model,cell_name,path_)
+        return train_loss_list, val_loss_list
 
-    def train(self, model, train_data, valid_data, num_of_epochs=20, teacher_ratio=1.0, clip=1):
+    def train(self, model, train_data, valid_data, path_, num_of_epochs=20, teacher_ratio=1.0, clip=1):
         """Train model"""
-        self._train_epoches(model, train_data, valid_data, num_of_epochs, teacher_ratio, clip)
+        return self._train_epoches(model, train_data, valid_data, path_, num_of_epochs, teacher_ratio, clip)
