@@ -7,8 +7,8 @@ from sklearn.model_selection import train_test_split
 from torchtext.data import Field, Example, Dataset
 from tqdm.notebook import tqdm_notebook
 from utils.constants import (
-    ANSWER_TOKEN, ENTITY_TOKEN, SOS_TOKEN, EOS_TOKEN,
-    SRC_NAME, TRG_NAME, TRAIN_PATH, TEST_PATH
+    SOS_TOKEN, EOS_TOKEN,
+    SRC_NAME, TRG_NAME
 )
 
 
